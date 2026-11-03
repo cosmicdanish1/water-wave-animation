@@ -11,8 +11,11 @@ import { createBodyUniforms, MAX_BODIES } from './constants.js';
 import { resolveQuality } from './quality.js';
 import { resolveEnvironmentMap, resolveTexture } from './environment.js';
 import { waveElevation } from './noise.js';
+import { getPreset } from './presets.js';
 
 const _v = new THREE.Vector3();
+const _spherical = new THREE.Spherical();
+const _target = new THREE.Vector3();
 
 /**
  * A self-contained interactive pool: waves, reflections, caustics, ripples,
@@ -38,17 +41,28 @@ export class WaterWorld {
       environmentMap = null,
       groundTexture = null,
       background = true,
+      clearColor = null,
+      clearAlpha = 1,
       camera = {},
       controls = true,
       interaction = true,
       autoStart = true,
-      water = {},
-      caustics = {},
-      ripples = {},
+      autoRotate = false,
+      placement = 'inline',
+      pointerEvents,
+      zIndex = -1,
+      preset = null,
       splashes = {},
       lights = true,
       loadingManager,
     } = options;
+
+    // A preset is a bundle of water/caustics defaults; explicit `water` /
+    // `caustics` options still win over it.
+    const base = preset ? getPreset(preset) : {};
+    const water = { ...base.water, ...options.water };
+    const caustics = { ...base.caustics, ...options.caustics };
+    const ripples = options.ripples ?? {};
 
     this.options = options;
     this.size = size;
@@ -63,17 +77,22 @@ export class WaterWorld {
     this._disposables = [];
 
     // Renderer -----------------------------------------------------------
+    const transparent = !background && clearColor === null;
     this.renderer = renderer || new THREE.WebGLRenderer({
       canvas: canvas || undefined,
       antialias: this.quality.antialias,
-      alpha: !background,
+      alpha: transparent,
       powerPreference: 'high-performance',
     });
     this.renderer.outputColorSpace = THREE.SRGBColorSpace;
-    if (this._ownsRenderer && container && !canvas) {
-      this.renderer.domElement.style.display = 'block';
-      container.appendChild(this.renderer.domElement);
+    if (clearColor !== null) this.renderer.setClearColor(new THREE.Color(clearColor), clearAlpha);
+    // Where to put the canvas: an explicit container, else the body for a
+    // full-screen background, else left detached for the caller to place.
+    this._mount = container || (this._ownsRenderer && !canvas && placement === 'background' && typeof document !== 'undefined' ? document.body : null);
+    if (this._ownsRenderer && !canvas && this._mount) {
+      this._mount.appendChild(this.renderer.domElement);
     }
+    this._applyPlacement(placement, { zIndex, pointerEvents });
 
     // Scene / camera -----------------------------------------------------
     this.scene = new THREE.Scene();
@@ -149,11 +168,17 @@ export class WaterWorld {
       this.interaction = new PointerInteraction(this, typeof interaction === 'object' ? interaction : {});
     }
 
+    // Camera drift (ambient backgrounds) ---------------------------------
+    this._autoRotate = { enabled: false, speed: 0.15, angle: 0 };
+    this.setAutoRotate(autoRotate);
+
     // Size ---------------------------------------------------------------
     this._maxPixelRatio = pixelRatio ?? Math.min(globalThis.devicePixelRatio || 1, this.quality.maxPixelRatio);
+    // 'background' is pinned to the viewport; everything else measures its box.
+    const measureWindow = placement === 'background' && !(width && height);
     if (width && height) {
       this.setSize(width, height);
-    } else if (container) {
+    } else if (container && !measureWindow) {
       const fit = () => {
         const w = container.clientWidth;
         const h = container.clientHeight;
@@ -272,6 +297,102 @@ export class WaterWorld {
     this.water.setResolution(resolution);
   }
 
+  // --- live configuration ----------------------------------------------
+
+  /**
+   * Change any parameter at runtime. Everything is a variable:
+   *
+   *   world.configure({
+   *     water:    { wavesAmplitude: 0.05, surfaceColor: '#36d6c3', fresnelScale: 1 },
+   *     caustics: { causticsIntensity: 0.3, shadowStrength: 0.5 },
+   *     ripples:  { damping: 0.99, strength: 1.5 },
+   *     autoRotate: true,
+   *   });
+   *
+   * `water` / `caustics` keys are the friendly names (no `u` prefix) listed in
+   * DEFAULT_WATER_PARAMS / DEFAULT_CAUSTICS_PARAMS.
+   */
+  configure(config = {}) {
+    if (config.preset) this.applyPreset(config.preset);
+    if (config.water) Object.assign(this.water.params, config.water);
+    if (config.caustics) {
+      for (const [key, value] of Object.entries(config.caustics)) {
+        const uniform = this.ground.material.uniforms['u' + key[0].toUpperCase() + key.slice(1)];
+        if (!uniform) continue;
+        if (uniform.value?.isColor) uniform.value.set(value);
+        else uniform.value = value;
+      }
+    }
+    if (config.ripples) {
+      if (config.ripples.damping !== undefined) this.ripples.damping = config.ripples.damping;
+      if (config.ripples.strength !== undefined) {
+        this.ripples.strength = config.ripples.strength;
+        this.water.material.uniforms.uRippleStrength.value = config.ripples.strength;
+      }
+    }
+    if (config.resolution !== undefined) this.setWaterResolution(config.resolution);
+    if (config.environmentMap !== undefined) this.setEnvironment(config.environmentMap);
+    if (config.groundTexture !== undefined) this.setGroundTexture(config.groundTexture);
+    if (config.autoRotate !== undefined) this.setAutoRotate(config.autoRotate);
+    if (config.camera) this.setCamera(config.camera);
+    return this;
+  }
+
+  /** Apply a named look (see PRESETS). Only touches water + caustics. */
+  applyPreset(name) {
+    const preset = getPreset(name);
+    if (preset.water) Object.assign(this.water.params, preset.water);
+    if (preset.caustics) this.configure({ caustics: preset.caustics });
+    this.preset = name;
+    return this;
+  }
+
+  /** Swap the reflection / background environment map at runtime. */
+  setEnvironment(source, { background } = {}) {
+    const map = resolveEnvironmentMap(source, this.options.loadingManager);
+    this.environmentMap = map;
+    this.water.material.uniforms.uEnvironmentMap.value = map;
+    this.scene.environment = map;
+    const showBackground = background ?? (this.scene.background !== null);
+    if (showBackground) this.scene.background = map;
+    if (!source?.isCubeTexture) this._disposables.push(map);
+    return this;
+  }
+
+  /** Swap the pool-floor texture at runtime. */
+  setGroundTexture(source) {
+    const tex = resolveTexture(source, this.options.loadingManager);
+    this.groundTexture = tex;
+    this.ground.material.uniforms.uTexture.value = tex;
+    if (!source?.isTexture) this._disposables.push(tex);
+    return this;
+  }
+
+  /** Move/aim the camera. { position:[x,y,z], target:[x,y,z], fov }. */
+  setCamera({ position, target, fov } = {}) {
+    if (position) this.camera.position.set(position[0], position[1], position[2]);
+    if (fov !== undefined) { this.camera.fov = fov; this.camera.updateProjectionMatrix(); }
+    if (target) {
+      this.camera.lookAt(target[0], target[1], target[2]);
+      this.controls?.target.set(target[0], target[1], target[2]);
+    }
+    return this;
+  }
+
+  /** Slow ambient orbit, ideal behind UI. speed is radians/second. */
+  setAutoRotate(enabled, speed) {
+    const on = !!enabled;
+    this._autoRotate.enabled = on;
+    if (typeof enabled === 'number') this._autoRotate.speed = enabled;
+    if (speed !== undefined) this._autoRotate.speed = speed;
+    if (this.controls) {
+      // Reuse OrbitControls' own damped auto-rotate when controls exist.
+      this.controls.autoRotate = on;
+      this.controls.autoRotateSpeed = this._autoRotate.speed * 9.55; // ~ rad/s -> OrbitControls units
+    }
+    return this;
+  }
+
   start() {
     if (this.running) return;
     this.running = true;
@@ -307,6 +428,15 @@ export class WaterWorld {
       }
     );
 
+    // Ambient camera drift when there are no OrbitControls to do it for us.
+    if (this._autoRotate.enabled && !this.controls) {
+      const t = this.controls ? _target.copy(this.controls.target) : _target.set(0, this.waterLevel - 0.02, 0);
+      _spherical.setFromVector3(_v.copy(this.camera.position).sub(t));
+      _spherical.theta += this._autoRotate.speed * dt;
+      this.camera.position.copy(t).add(_v.setFromSpherical(_spherical));
+      this.camera.lookAt(t);
+    }
+
     this.controls?.update();
     this._emit('frame', dt);
   }
@@ -339,7 +469,7 @@ export class WaterWorld {
     if (this._ownsRenderer) {
       this.renderer.dispose();
       const el = this.renderer.domElement;
-      if (this.container && el?.parentNode === this.container) this.container.removeChild(el);
+      if (el?.parentNode) el.parentNode.removeChild(el);
     }
   }
 
@@ -348,6 +478,28 @@ export class WaterWorld {
   _tick() {
     this.step(this._clock.getDelta());
     this.render();
+  }
+
+  /** Style the canvas for inline / fill / background use. */
+  _applyPlacement(placement, { zIndex, pointerEvents }) {
+    const el = this.renderer.domElement;
+    if (!el?.style) return;
+    el.style.display = 'block';
+    if (placement === 'background') {
+      Object.assign(el.style, {
+        position: 'fixed', inset: '0', top: '0', left: '0',
+        width: '100%', height: '100%', zIndex: String(zIndex),
+        pointerEvents: pointerEvents ?? 'auto',
+      });
+    } else if (placement === 'fill') {
+      Object.assign(el.style, {
+        position: 'absolute', inset: '0', top: '0', left: '0',
+        width: '100%', height: '100%',
+        pointerEvents: pointerEvents ?? 'auto',
+      });
+    } else if (pointerEvents) {
+      el.style.pointerEvents = pointerEvents;
+    }
   }
 
   _emit(event, payload) {
@@ -379,4 +531,25 @@ function disposeObject(object) {
 
 export function createWaterWorld(options) {
   return new WaterWorld(options);
+}
+
+/**
+ * A full-screen animated water background to sit behind your UI (login forms,
+ * hero sections, dashboards). Pins the canvas to the viewport, drifts the
+ * camera slowly, and uses the calm "ambient" preset by default. Clicks still
+ * reach your DOM; empty areas ripple.
+ *
+ * @example
+ * const bg = createWaterBackground({ preset: 'twilight' });
+ * // ... later: bg.applyPreset('ocean'); bg.dispose();
+ */
+export function createWaterBackground(options = {}) {
+  return new WaterWorld({
+    placement: 'background',
+    preset: options.preset ?? 'ambient',
+    controls: false,
+    autoRotate: true,
+    camera: { position: [0.9, 0.28, 0.9], target: [0, -0.02, 0], ...options.camera },
+    ...options,
+  });
 }

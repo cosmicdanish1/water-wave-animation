@@ -1,10 +1,15 @@
 {
-  "name": "water-wave",
+  "name": "@cosmicdanish1/water-wave",
   "private": false,
   "version": "0.1.0",
-  "description": "Interactive stylised water for three.js: waves, reflections, caustics, ripples, and objects that float, splash and interact with the surface. Works on web, mobile, desktop and TV.",
+  "description": "Interactive stylised water for three.js: waves, reflections, caustics, ripples, and objects that float, splash and interact with the surface. Works on web, mobile, desktop and TV, and as an animated UI background.",
   "type": "module",
   "license": "MIT",
+  "repository": {
+    "type": "git",
+    "url": "git+https://github.com/cosmicdanish1/water-wave-animation.git"
+  },
+  "homepage": "https://github.com/cosmicdanish1/water-wave-animation#readme",
   "keywords": [
     "three",
     "threejs",
@@ -37,13 +42,18 @@
     "react": ">=18"
   },
   "sideEffects": false,
+  "publishConfig": {
+    "access": "public"
+  },
   "scripts": {
     "dev": "vite",
     "build": "vite build",
     "build:lib": "vite build --mode lib",
     "preview": "vite preview",
     "lint": "eslint .",
-    "test": "vitest run"
+    "test": "vitest run",
+    "prepare": "vite build --mode lib",
+    "prepublishOnly": "npm run lint && npm test && npm run build:lib"
   },
   "peerDependenciesMeta": {
     "react": {

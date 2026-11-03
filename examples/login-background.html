@@ -1,0 +1,87 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>water-wave · login background</title>
+    <style>
+      * { box-sizing: border-box; }
+      html, body { margin: 0; height: 100%; font-family: system-ui, sans-serif; }
+      body {
+        /* A CSS gradient shows through the transparent water canvas. */
+        background: linear-gradient(160deg, #0a2740, #0f3d57 55%, #155e6e);
+        display: grid;
+        place-items: center;
+        min-height: 100vh;
+      }
+      .card {
+        position: relative;
+        z-index: 1;                 /* above the water (z-index: -1) */
+        width: min(90vw, 360px);
+        padding: 32px;
+        border-radius: 18px;
+        background: rgba(10, 25, 40, 0.45);
+        border: 1px solid rgba(255, 255, 255, 0.18);
+        backdrop-filter: blur(14px);
+        color: #eaf6ff;
+        box-shadow: 0 20px 60px rgba(0, 0, 0, 0.35);
+      }
+      h1 { margin: 0 0 4px; font-size: 1.5rem; }
+      p { margin: 0 0 22px; opacity: 0.7; font-size: 0.9rem; }
+      label { display: block; font-size: 0.8rem; opacity: 0.8; margin: 14px 0 6px; }
+      input {
+        width: 100%; padding: 11px 13px; border-radius: 10px;
+        border: 1px solid rgba(255, 255, 255, 0.2);
+        background: rgba(255, 255, 255, 0.08); color: #fff; font-size: 1rem;
+      }
+      button {
+        margin-top: 22px; width: 100%; padding: 12px; border: none; cursor: pointer;
+        border-radius: 10px; font-size: 1rem; font-weight: 600; color: #04212e;
+        background: linear-gradient(90deg, #5fe0d0, #7fd0ff);
+      }
+      .hint { position: fixed; bottom: 14px; left: 0; right: 0; text-align: center;
+        color: rgba(255,255,255,0.6); font-size: 0.8rem; z-index: 1; }
+      select { position: fixed; top: 14px; right: 14px; z-index: 2; padding: 6px; border-radius: 8px; }
+    </style>
+  </head>
+  <body>
+    <!-- Swap the look live -->
+    <select id="preset">
+      <option value="ambient">ambient</option>
+      <option value="twilight">twilight</option>
+      <option value="ocean">ocean</option>
+      <option value="tropical">tropical</option>
+      <option value="ink">ink</option>
+      <option value="calm">calm</option>
+    </select>
+
+    <form class="card" onsubmit="return false">
+      <h1>Welcome back</h1>
+      <p>Sign in to continue</p>
+      <label>Email</label>
+      <input type="email" placeholder="you@example.com" />
+      <label>Password</label>
+      <input type="password" placeholder="••••••••" />
+      <button type="submit">Sign in</button>
+    </form>
+
+    <div class="hint">Click the water · the form still works · pick a look top-right</div>
+
+    <script type="module">
+      import { createWaterBackground } from '/src/water/index.js';
+
+      // One line gives you a full-screen animated, interactive water background.
+      const bg = createWaterBackground({
+        preset: 'ambient',
+        background: false, // transparent -> the CSS gradient shows through
+      });
+
+      // Everything is a live variable:
+      document.getElementById('preset').addEventListener('change', (e) => {
+        bg.applyPreset(e.target.value);
+      });
+
+      window.__bg = bg; // for the smoke test
+    </script>
+  </body>
+</html>

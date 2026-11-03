@@ -11,6 +11,8 @@ const rootDir = dirname(fileURLToPath(import.meta.url));
 export default defineConfig(({ mode }) => {
   if (mode === 'lib') {
     return {
+      // Don't copy the demo's public/ assets into the shipped library.
+      publicDir: false,
       build: {
         outDir: 'dist',
         lib: {
@@ -19,9 +21,11 @@ export default defineConfig(({ mode }) => {
           formats: ['es', 'umd'],
           fileName: (format) => `water-wave.${format}.js`,
         },
-        // three is a peer dependency: don't bundle it.
+        // Core `three` is a peer dependency (don't bundle it), but the small
+        // `three/examples/jsm` helpers (OrbitControls, Pass) are bundled so the
+        // UMD build is self-contained and consumers don't need them resolvable.
         rollupOptions: {
-          external: ['three', /^three\//, 'tweakpane'],
+          external: (id) => id === 'three' || id.startsWith('three/build') || id === 'tweakpane',
           output: {
             globals: { three: 'THREE', tweakpane: 'Tweakpane' },
           },

@@ -24,13 +24,22 @@ thin wrappers on top.
 - 📱 **Scales to the device** – automatic quality presets for phones, desktops and TVs; caps pixel ratio; degrades gracefully with no float-texture support and with **zero assets** (procedural sky + sand fallbacks).
 - 🎛️ **Optional tweakpane UI** – lazy-loaded, never in your production bundle unless you ask for it.
 
+> **New to packaging / want to reuse this everywhere?** Read **[GUIDE.md](./GUIDE.md)** —
+> it teaches how reusable packages work and walks through installing, the
+> background mode, and making *every* value a live variable.
+
 ## Install
 
 ```bash
-npm install water-wave three
+npm install three
+# from GitHub (no publishing needed — recommended for your own reuse):
+npm install github:cosmicdanish1/water-wave-animation
+# or, once published to npm under your scope:
+npm install @cosmicdanish1/water-wave
 ```
 
-`three` is a peer dependency. `tweakpane` is optional (only for the debug UI).
+`three` is a peer dependency. `react` and `tweakpane` are optional (only for
+the React hook and the debug UI).
 
 ## Quick start (any framework / vanilla)
 
@@ -49,6 +58,34 @@ world.addSphere({ radius: 0.06, color: '#ffd34d', position: [0.2, 0.5, -0.1] });
 
 That's it — the render loop, resizing, reflections, caustics, ripples and
 dragging are all handled. Call `world.dispose()` when you're done.
+
+### As an animated UI background (login forms, hero sections)
+
+```js
+import { createWaterBackground } from '@cosmicdanish1/water-wave';
+
+const bg = createWaterBackground({ preset: 'twilight', background: false });
+// Full-screen water pinned behind your DOM (z-index -1), camera drifting on its
+// own, clicks still reaching your form. See examples/login-background.html.
+```
+
+### Presets & live configuration — everything is a variable
+
+```js
+createWaterWorld({ preset: 'ocean' });   // pool | ocean | calm | tropical | twilight | ink | ambient
+
+world.applyPreset('tropical');           // swap the whole mood any time
+world.configure({                        // or set any individual value, live
+  water:    { wavesAmplitude: 0.05, surfaceColor: '#36d6c3', fresnelScale: 1 },
+  caustics: { causticsIntensity: 0.3, shadowStrength: 0.5 },
+  ripples:  { damping: 0.99, strength: 1.5 },
+  autoRotate: true,
+});
+world.setEnvironment('/sky/');           // swap the reflection map at runtime
+world.setGroundTexture('/sand.png');
+```
+
+Full list of tunables in [GUIDE.md § Part 4](./GUIDE.md#part-4--everything-is-a-variable).
 
 ### Dropping your own models in
 
@@ -104,6 +141,11 @@ createWaterWorld({
 | Call | What it does |
 | --- | --- |
 | `createWaterWorld(options)` | Build a pool. See options below. |
+| `createWaterBackground(options)` | Full-screen water pinned behind your UI. |
+| `world.configure(config)` | Change any water/caustics/ripple/camera value, live. |
+| `world.applyPreset(name)` | Apply a named look. |
+| `world.setEnvironment(src)` / `setGroundTexture(src)` | Swap reflection map / floor at runtime. |
+| `world.setCamera({position,target,fov})` / `setAutoRotate(on, speed)` | Aim / drift the camera. |
 | `world.addCube/addSphere(opts)` | Add a floating primitive. |
 | `world.addBody(object3d, opts)` | Make any object float. Returns a `FloatingBody`. |
 | `world.disturb(x, z, radius, strength)` | Ripple the surface. |
@@ -114,10 +156,12 @@ createWaterWorld({
 | `world.dispose()` | Release every GPU resource. |
 | `createDebugUI(world)` | Lazy tweakpane panel (returns a Promise). |
 
-Key `createWaterWorld` options: `container` / `canvas` / `renderer`, `quality`
-(`'auto' \| 'low' \| 'medium' \| 'high'` or an object), `size`, `depth`,
-`environmentMap`, `groundTexture`, `camera`, `controls`, `interaction`,
-`water`, `caustics`, `ripples`, `splashes`, `lights`, `autoStart`.
+Key `createWaterWorld` options: `container` / `canvas` / `renderer`, `preset`,
+`quality` (`'auto' \| 'low' \| 'medium' \| 'high'` or an object), `size`,
+`depth`, `environmentMap`, `groundTexture`, `background` / `clearColor`,
+`placement` (`'inline' \| 'fill' \| 'background'`), `pointerEvents`, `zIndex`,
+`camera`, `controls`, `interaction`, `autoRotate`, `water`, `caustics`,
+`ripples`, `splashes`, `lights`, `autoStart`.
 
 ## How objects interact with the water
 

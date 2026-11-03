@@ -2,7 +2,8 @@
 // Framework-agnostic core + optional helpers. Works on web, mobile
 // (React Native / expo-gl), desktop and TV wherever WebGL/WebGL2 runs.
 
-export { WaterWorld, createWaterWorld } from './WaterWorld.js';
+export { WaterWorld, createWaterWorld, createWaterBackground } from './WaterWorld.js';
+export { PRESETS, getPreset } from './presets.js';
 export { Water, DEFAULT_WATER_PARAMS } from './Water.js';
 export { Ground, DEFAULT_CAUSTICS_PARAMS } from './Ground.js';
 export { RippleSimulation } from './RippleSimulation.js';
