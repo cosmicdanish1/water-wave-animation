@@ -1,0 +1,30 @@
+<!doctype html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" /><meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>gallery</title>
+    <style>html,body{margin:0;height:100%;overflow:hidden;background:#05121a}</style>
+  </head>
+  <body>
+    <script type="module">
+      import { createWaterWorld } from '/src/water/index.js';
+      const preset = new URLSearchParams(location.search).get('preset') || 'pool';
+      const base = '/threejs-water-shader/';
+      const world = createWaterWorld({
+        container: document.body,
+        preset,
+        controls: false,
+        interaction: false,
+        environmentMap: { path: base, files: ['px.png','nx.png','py.png','ny.png','pz.png','nz.png'] },
+        groundTexture: base + 'ocean_floor.png',
+        camera: { position: [0.75, 0.32, 0.75], target: [0, -0.03, 0], fov: 58 },
+      });
+      world.addCube({ size: 0.13, color: '#ff7a45', position: [-0.22, 0.3, 0.08], rotation: 0.6 });
+      world.addSphere({ radius: 0.075, color: '#ffd34d', position: [0.16, 0.3, -0.14] });
+      world.addCube({ size: 0.1, color: '#4dd0e1', position: [0.06, 0.3, 0.26], density: 0.45 });
+      // settle the scene then flag ready
+      let t = 0; world.on('frame', () => { if ((t += 1) === 120) window.__ready = true; });
+      window.__world = world;
+    </script>
+  </body>
+</html>
